@@ -1,0 +1,574 @@
+// ---------------------------------------------------------------------------
+// std/strings - cross-platform string operations (no assembly, no syscalls)
+// ---------------------------------------------------------------------------
+
+module std_strings;
+
+import core;
+
+fn read_byte(addr: u64) -> i32 {
+    let w: i32 = load32(addr);
+    let b: i32 = w % 256;
+    if (b < 0) { b = b + 256; }
+    return b;
+}
+
+fn cstr_len(addr: u64) -> u64 {
+    let i: u64 = 0;
+    while (i < 4096) {
+        if (read_byte(addr + i) == 0) { return i; }
+        i = i + 1;
+    }
+    return i;
+}
+
+fn starts_with(s: str, p: str) -> bool {
+    if (len(s) < len(p)) { return false; }
+    let i: i32 = 0;
+    let sptr: u64 = ptr(s);
+    let pp: u64 = ptr(p);
+    while (i < len(p)) {
+        let off: u64 = i32_to_u64(i);
+        if (read_byte(sptr + off) != read_byte(pp + off)) { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+fn ends_with(s: str, p: str) -> bool {
+    let sl: i32 = len(s);
+    let pl: i32 = len(p);
+    if (sl < pl) { return false; }
+    let off: i32 = sl - pl;
+    let sptr: u64 = ptr(s);
+    let pp: u64 = ptr(p);
+    let i: i32 = 0;
+    while (i < pl) {
+        let si: i32 = off + i;
+        if (read_byte(sptr + i32_to_u64(si)) != read_byte(pp + i32_to_u64(i))) { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+fn str_contains(s: str, needle: str) -> bool {
+    let sl: i32 = len(s);
+    let nl: i32 = len(needle);
+    if (nl == 0) { return true; }
+    if (sl < nl) { return false; }
+    let limit: i32 = sl - nl + 1;
+    let sptr: u64 = ptr(s);
+    let np: u64 = ptr(needle);
+    let i: i32 = 0;
+    while (i < limit) {
+        let ok: bool = true;
+        let j: i32 = 0;
+        while (j < nl) {
+            let ci: i32 = i + j;
+            if (read_byte(sptr + i32_to_u64(ci)) != read_byte(np + i32_to_u64(j))) { ok = false; j = nl; }
+            else { j = j + 1; }
+        }
+        if (ok) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+fn str_find(s: str, needle: str) -> i32 {
+    let sl: i32 = len(s);
+    let nl: i32 = len(needle);
+    if (nl == 0) { return 0; }
+    if (sl < nl) { return -1; }
+    let limit: i32 = sl - nl + 1;
+    let sptr: u64 = ptr(s);
+    let np: u64 = ptr(needle);
+    let i: i32 = 0;
+    while (i < limit) {
+        let ok: bool = true;
+        let j: i32 = 0;
+        while (j < nl) {
+            let ci: i32 = i + j;
+            if (read_byte(sptr + i32_to_u64(ci)) != read_byte(np + i32_to_u64(j))) { ok = false; j = nl; }
+            else { j = j + 1; }
+        }
+        if (ok) { return i; }
+        i = i + 1;
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
+// Safe character lookup — returns string literal for each byte value.
+// Avoids store8/copy_bytes_raw which have register clobbering issues
+// on Linux ARM64 when compiled with Novus V0.1.3.
+// ---------------------------------------------------------------------------
+fn _byte_to_char(val: i32) -> str {
+    if (val == 0) { return "\0"; }
+    if (val == 9) { return "\t"; }
+    if (val == 10) { return "\n"; }
+    if (val == 13) { return "\r"; }
+    if (val == 32) { return " "; }
+    if (val == 33) { return "!"; }
+    if (val == 34) { return "\""; }
+    if (val == 35) { return "#"; }
+    if (val == 36) { return "$"; }
+    if (val == 37) { return "%"; }
+    if (val == 38) { return "&"; }
+    if (val == 39) { return "'"; }
+    if (val == 40) { return "("; }
+    if (val == 41) { return ")"; }
+    if (val == 42) { return "*"; }
+    if (val == 43) { return "+"; }
+    if (val == 44) { return ","; }
+    if (val == 45) { return "-"; }
+    if (val == 46) { return "."; }
+    if (val == 47) { return "/"; }
+    if (val == 48) { return "0"; }
+    if (val == 49) { return "1"; }
+    if (val == 50) { return "2"; }
+    if (val == 51) { return "3"; }
+    if (val == 52) { return "4"; }
+    if (val == 53) { return "5"; }
+    if (val == 54) { return "6"; }
+    if (val == 55) { return "7"; }
+    if (val == 56) { return "8"; }
+    if (val == 57) { return "9"; }
+    if (val == 58) { return ":"; }
+    if (val == 59) { return ";"; }
+    if (val == 60) { return "<"; }
+    if (val == 61) { return "="; }
+    if (val == 62) { return ">"; }
+    if (val == 63) { return "?"; }
+    if (val == 64) { return "@"; }
+    if (val == 65) { return "A"; }
+    if (val == 66) { return "B"; }
+    if (val == 67) { return "C"; }
+    if (val == 68) { return "D"; }
+    if (val == 69) { return "E"; }
+    if (val == 70) { return "F"; }
+    if (val == 71) { return "G"; }
+    if (val == 72) { return "H"; }
+    if (val == 73) { return "I"; }
+    if (val == 74) { return "J"; }
+    if (val == 75) { return "K"; }
+    if (val == 76) { return "L"; }
+    if (val == 77) { return "M"; }
+    if (val == 78) { return "N"; }
+    if (val == 79) { return "O"; }
+    if (val == 80) { return "P"; }
+    if (val == 81) { return "Q"; }
+    if (val == 82) { return "R"; }
+    if (val == 83) { return "S"; }
+    if (val == 84) { return "T"; }
+    if (val == 85) { return "U"; }
+    if (val == 86) { return "V"; }
+    if (val == 87) { return "W"; }
+    if (val == 88) { return "X"; }
+    if (val == 89) { return "Y"; }
+    if (val == 90) { return "Z"; }
+    if (val == 91) { return "["; }
+    if (val == 92) { return "\\"; }
+    if (val == 93) { return "]"; }
+    if (val == 94) { return "^"; }
+    if (val == 95) { return "_"; }
+    if (val == 96) { return "`"; }
+    if (val == 97) { return "a"; }
+    if (val == 98) { return "b"; }
+    if (val == 99) { return "c"; }
+    if (val == 100) { return "d"; }
+    if (val == 101) { return "e"; }
+    if (val == 102) { return "f"; }
+    if (val == 103) { return "g"; }
+    if (val == 104) { return "h"; }
+    if (val == 105) { return "i"; }
+    if (val == 106) { return "j"; }
+    if (val == 107) { return "k"; }
+    if (val == 108) { return "l"; }
+    if (val == 109) { return "m"; }
+    if (val == 110) { return "n"; }
+    if (val == 111) { return "o"; }
+    if (val == 112) { return "p"; }
+    if (val == 113) { return "q"; }
+    if (val == 114) { return "r"; }
+    if (val == 115) { return "s"; }
+    if (val == 116) { return "t"; }
+    if (val == 117) { return "u"; }
+    if (val == 118) { return "v"; }
+    if (val == 119) { return "w"; }
+    if (val == 120) { return "x"; }
+    if (val == 121) { return "y"; }
+    if (val == 122) { return "z"; }
+    if (val == 123) { return "{"; }
+    if (val == 124) { return "|"; }
+    if (val == 125) { return "}"; }
+    if (val == 126) { return "~"; }
+    return "?";
+}
+
+// ---------------------------------------------------------------------------
+// Substring extraction — builds result byte-by-byte using _byte_to_char
+// to avoid copy_bytes_raw with non-zero offsets (register clobbering on ARM64)
+// ---------------------------------------------------------------------------
+fn substr(s: str, start: i32) -> str {
+    let slen: i32 = len(s);
+    if (start < 0) { return ""; }
+    if (start >= slen) { return ""; }
+    let count: i32 = slen - start;
+    if (count <= 0) { return ""; }
+    return copy_bytes_raw(ptr(s) + i32_to_u64(start), count);
+}
+
+fn substr_len(s: str, start: i32, count: i32) -> str {
+    let slen: i32 = len(s);
+    if (start < 0) { return ""; }
+    if (count <= 0) { return ""; }
+    if (start >= slen) { return ""; }
+    if (start + count > slen) {
+        count = slen - start;
+    }
+    if (count <= 0) { return ""; }
+    return copy_bytes_raw(ptr(s) + i32_to_u64(start), count);
+}
+
+// ---------------------------------------------------------------------------
+// Find last occurrence of needle in s, returns -1 if not found
+// ---------------------------------------------------------------------------
+
+fn str_last_find(s: str, needle: str) -> i32 {
+    let sl: i32 = len(s);
+    let nl: i32 = len(needle);
+    if (nl == 0) { return sl; }
+    if (sl < nl) { return -1; }
+    let sptr: u64 = ptr(s);
+    let np: u64 = ptr(needle);
+    let i: i32 = sl - nl;
+    while (i >= 0) {
+        let ok: bool = true;
+        let j: i32 = 0;
+        while (j < nl) {
+            let ci: i32 = i + j;
+            if (read_byte(sptr + i32_to_u64(ci)) != read_byte(np + i32_to_u64(j))) { ok = false; j = nl; }
+            else { j = j + 1; }
+        }
+        if (ok) { return i; }
+        i = i - 1;
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
+// Count non-overlapping occurrences of needle in s
+// ---------------------------------------------------------------------------
+
+fn str_count(s: str, needle: str) -> i32 {
+    let sl: i32 = len(s);
+    let nl: i32 = len(needle);
+    if (nl == 0) { return 0; }
+    if (sl < nl) { return 0; }
+    let count: i32 = 0;
+    let sptr: u64 = ptr(s);
+    let np: u64 = ptr(needle);
+    let i: i32 = 0;
+    let limit: i32 = sl - nl + 1;
+    while (i < limit) {
+        let ok: bool = true;
+        let j: i32 = 0;
+        while (j < nl) {
+            let ci: i32 = i + j;
+            if (read_byte(sptr + i32_to_u64(ci)) != read_byte(np + i32_to_u64(j))) { ok = false; j = nl; }
+            else { j = j + 1; }
+        }
+        if (ok) {
+            count = count + 1;
+            i = i + nl;
+        } else {
+            i = i + 1;
+        }
+    }
+    return count;
+}
+
+// ---------------------------------------------------------------------------
+// Replace all occurrences of old with new_val in s
+// ---------------------------------------------------------------------------
+
+fn str_replace(s: str, old: str, new_val: str) -> str {
+    let ol: i32 = len(old);
+    if (ol == 0) { return s; }
+    let sl: i32 = len(s);
+    let sptr: u64 = ptr(s);
+    let op: u64 = ptr(old);
+    // Chunk-based: copy segments between matches with copy_bytes_raw
+    let result: str = "";
+    let seg_start: i32 = 0;
+    let i: i32 = 0;
+    while (i + ol <= sl) {
+        let found: bool = true;
+        let j: i32 = 0;
+        while (j < ol) {
+            if (read_byte(sptr + i32_to_u64(i + j)) != read_byte(op + i32_to_u64(j))) {
+                found = false;
+                j = ol;
+            } else {
+                j = j + 1;
+            }
+        }
+        if (found) {
+            if (i > seg_start) {
+                result = result + copy_bytes_raw(sptr + i32_to_u64(seg_start), i - seg_start);
+            }
+            result = result + new_val;
+            i = i + ol;
+            seg_start = i;
+        } else {
+            i = i + 1;
+        }
+    }
+    if (seg_start < sl) {
+        result = result + copy_bytes_raw(sptr + i32_to_u64(seg_start), sl - seg_start);
+    }
+    return result;
+}
+
+// Replace only the first occurrence
+fn str_replace_first(s: str, old: str, new_val: str) -> str {
+    let pos: i32 = str_find(s, old);
+    if (pos < 0) { return s; }
+    let ol: i32 = len(old);
+    return substr_len(s, 0, pos) + new_val + substr(s, pos + ol);
+}
+
+// ---------------------------------------------------------------------------
+// Trim whitespace
+// ---------------------------------------------------------------------------
+
+fn str_trim_left(s: str) -> str {
+    let sl: i32 = len(s);
+    let sptr: u64 = ptr(s);
+    let i: i32 = 0;
+    while (i < sl) {
+        let ch: i32 = read_byte(sptr + i32_to_u64(i));
+        if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+            i = i + 1;
+        } else {
+            break;
+        }
+    }
+    return substr(s, i);
+}
+
+fn str_trim_right(s: str) -> str {
+    let sl: i32 = len(s);
+    let sptr: u64 = ptr(s);
+    let i: i32 = sl - 1;
+    while (i >= 0) {
+        let ch: i32 = read_byte(sptr + i32_to_u64(i));
+        if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+            i = i - 1;
+        } else {
+            break;
+        }
+    }
+    return substr_len(s, 0, i + 1);
+}
+
+fn str_trim(s: str) -> str {
+    return str_trim_right(str_trim_left(s));
+}
+
+// ---------------------------------------------------------------------------
+// Case conversion (ASCII only)
+// ---------------------------------------------------------------------------
+
+fn str_upper(s: str) -> str {
+    let sl: i32 = len(s);
+    if (sl == 0) { return ""; }
+    let result: str = copy_bytes_raw(ptr(s), sl);
+    let i: i32 = 0;
+    while (i < sl) {
+        let ch: i32 = byte_at(s, i);
+        if (ch >= 97 && ch <= 122) {
+            result[i] = ch - 32;
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+fn str_lower(s: str) -> str {
+    let sl: i32 = len(s);
+    if (sl == 0) { return ""; }
+    let result: str = copy_bytes_raw(ptr(s), sl);
+    let i: i32 = 0;
+    while (i < sl) {
+        let ch: i32 = byte_at(s, i);
+        if (ch >= 65 && ch <= 90) {
+            result[i] = ch + 32;
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// Reverse a string
+// ---------------------------------------------------------------------------
+
+fn str_reverse(s: str) -> str {
+    let sl: i32 = len(s);
+    if (sl == 0) { return ""; }
+    let result: str = make_buffer(sl);
+    let i: i32 = 0;
+    while (i < sl) {
+        result[i] = byte_at(s, sl - 1 - i);
+        i = i + 1;
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// Character classification (ASCII)
+// ---------------------------------------------------------------------------
+
+fn is_digit(ch: i32) -> bool {
+    let c: i32 = ch & 255;
+    return (c >= 48 && c <= 57);
+}
+
+fn is_alpha(ch: i32) -> bool {
+    let c: i32 = ch & 255;
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+}
+
+fn is_alnum(ch: i32) -> bool {
+    return is_digit(ch) || is_alpha(ch);
+}
+
+fn is_space(ch: i32) -> bool {
+    let c: i32 = ch & 255;
+    return (c == 32 || c == 9 || c == 10 || c == 13);
+}
+
+fn is_upper(ch: i32) -> bool {
+    let c: i32 = ch & 255;
+    return (c >= 65 && c <= 90);
+}
+
+fn is_lower(ch: i32) -> bool {
+    let c: i32 = ch & 255;
+    return (c >= 97 && c <= 122);
+}
+
+// ---------------------------------------------------------------------------
+// Padding
+// ---------------------------------------------------------------------------
+
+fn str_pad_left(s: str, total: i32, pad: str) -> str {
+    let sl: i32 = len(s);
+    if (sl >= total) { return s; }
+    let pl: i32 = len(pad);
+    if (pl == 0) { return s; }
+    let needed: i32 = total - sl;
+    let buf: str = make_buffer(needed);
+    let i: i32 = 0;
+    while (i < needed) {
+        buf[i] = byte_at(pad, i % pl);
+        i = i + 1;
+    }
+    return buf + s;
+}
+
+fn str_pad_right(s: str, total: i32, pad: str) -> str {
+    let sl: i32 = len(s);
+    if (sl >= total) { return s; }
+    let pl: i32 = len(pad);
+    if (pl == 0) { return s; }
+    let needed: i32 = total - sl;
+    let buf: str = make_buffer(needed);
+    let i: i32 = 0;
+    while (i < needed) {
+        buf[i] = byte_at(pad, i % pl);
+        i = i + 1;
+    }
+    return s + buf;
+}
+
+// ---------------------------------------------------------------------------
+// String repetition check
+// ---------------------------------------------------------------------------
+
+fn str_equals(a: str, b: str) -> bool {
+    let al: i32 = len(a);
+    let bl: i32 = len(b);
+    if (al != bl) { return false; }
+    let ap: u64 = ptr(a);
+    let bp: u64 = ptr(b);
+    let i: i32 = 0;
+    while (i < al) {
+        let off: u64 = i32_to_u64(i);
+        if (read_byte(ap + off) != read_byte(bp + off)) { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Split string at first occurrence of delimiter
+// Returns the part before the delimiter. Use str_find + substr to get after.
+// ---------------------------------------------------------------------------
+
+fn str_split_first(s: str, delim: str) -> str {
+    let pos: i32 = str_find(s, delim);
+    if (pos < 0) { return s; }
+    return substr_len(s, 0, pos);
+}
+
+fn str_split_rest(s: str, delim: str) -> str {
+    let pos: i32 = str_find(s, delim);
+    if (pos < 0) { return ""; }
+    return substr(s, pos + len(delim));
+}
+
+// ---------------------------------------------------------------------------
+// Check if string is empty or whitespace-only
+// ---------------------------------------------------------------------------
+
+fn str_is_empty(s: str) -> bool {
+    return len(s) == 0;
+}
+
+fn str_is_blank(s: str) -> bool {
+    let sl: i32 = len(s);
+    let sptr: u64 = ptr(s);
+    let i: i32 = 0;
+    while (i < sl) {
+        let ch: i32 = read_byte(sptr + i32_to_u64(i));
+        if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Convert integer to hex string
+// ---------------------------------------------------------------------------
+
+fn int_to_hex(n: i32) -> str {
+    if (n == 0) { return "0"; }
+    let val: i32 = n;
+    if (val < 0) { val = 0 - val; }
+    let hex_chars: str = "0123456789abcdef";
+    // Max 8 hex digits for 32-bit + sign
+    let tmp: str = make_buffer(9);
+    let pos: i32 = 8;
+    while (val > 0) {
+        pos = pos - 1;
+        tmp[pos] = byte_at(hex_chars, val % 16);
+        val = val / 16;
+    }
+    let result: str = "";
+    if (n < 0) { result = "-"; }
+    return result + copy_bytes_raw(ptr(tmp) + i32_to_u64(pos), 8 - pos);
+}

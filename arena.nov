@@ -1,0 +1,137 @@
+module arena;
+
+import ball[Ball];
+import lib/maths maths;
+
+class Arena {
+    pub static let capacity: i32 = 512;
+    pub let side: i32 = 390;
+    pub let pulse: i32;
+    let balls: []Ball = [];
+    let population: i32;
+    let colors: []i32 = [0xFFFF5F94, 0xFF5DF2EF, 0xFFFFD85C, 0xFFAF86FF,
+                         0xFF62F6AA, 0xFFFF9366, 0xFF77AAFF];
+    let directions_x: []i32 = [256, 237, 181, 98, 0, -98, -181, -237,
+                              -256, -237, -181, -98, 0, 98, 181, 237];
+    let directions_y: []i32 = [0, 98, 181, 237, 256, 237, 181, 98,
+                              0, -98, -181, -237, -256, -237, -181, -98];
+
+    pub init() {
+        self.reset();
+    }
+
+    pub fn count() -> i32 {
+        return self.population;
+    }
+
+    pub fn at(index: i32) -> Ball {
+        return self.balls[index];
+    }
+
+    pub fn reset() -> void {
+        let center: i32 = self.side * Ball.unit / 2;
+        self.balls = [new Ball(center - 36 * Ball.unit, center - 8 * Ball.unit,
+                               544, 112, self.colors[0], 0),
+                      new Ball(center + 36 * Ball.unit, center + 8 * Ball.unit,
+                               -544, -112, self.colors[1], 0)];
+        self.population = 2;
+        self.pulse = 0;
+    }
+
+    pub fn resize(delta: i32) -> void {
+        let next: i32 = maths.clamp(self.side + delta, 222, 426);
+        if (next == self.side) { return; }
+        let shift: i32 = (next - self.side) * Ball.unit / 2;
+        self.side = next;
+        let hi: i32 = self.side * Ball.unit - Ball.radius;
+        let index: i32 = 0;
+        while (index < self.count()) {
+            let ball: Ball = self.at(index);
+            ball.x += shift;
+            ball.y += shift;
+            ball.bounce_off_walls(Ball.radius, hi);
+            index++;
+        }
+    }
+
+    pub fn step() -> void {
+        if (self.pulse > 0) { self.pulse--; }
+        let existing: i32 = self.count();
+        let hi: i32 = self.side * Ball.unit - Ball.radius;
+        let i: i32 = 0;
+        while (i < existing) {
+            self.at(i).advance(Ball.radius, hi);
+            i++;
+        }
+
+        // Only the balls present at the start of this step can collide this step.
+        i = 0;
+        while (i < existing) {
+            let first: Ball = self.at(i);
+            let j: i32 = i + 1;
+            while (j < existing) {
+                let second: Ball = self.at(j);
+                if (first.collide(second)) {
+                    if (self.count() < Arena.capacity) {
+                        self.spawn((first.x + second.x) / 2, (first.y + second.y) / 2);
+                    }
+                }
+                j++;
+            }
+            i++;
+        }
+
+        i = 0;
+        while (i < self.count()) {
+            self.at(i).bounce_off_walls(Ball.radius, hi);
+            i++;
+        }
+    }
+
+    fn has_room(x: i32, y: i32) -> bool {
+        let i: i32 = 0;
+        while (i < self.count()) {
+            if (self.at(i).overlaps(x, y, Ball.radius * 2 + 32)) { return false; }
+            i++;
+        }
+        return true;
+    }
+
+    fn spawn(x: i32, y: i32) -> void {
+        let count: i32 = self.count();
+        let heading: i32 = count * 7 % 16;
+        let hi: i32 = self.side * Ball.unit - Ball.radius;
+        let spawn_x: i32 = maths.clamp(x, Ball.radius, hi);
+        let spawn_y: i32 = maths.clamp(y, Ball.radius, hi);
+        let distance: i32 = 12;
+        while (distance <= 48) {
+            let offset: i32 = 0;
+            while (offset < 16) {
+                let direction: i32 = (heading + offset) % 16;
+                let candidate_x: i32 = x + self.directions_x[direction] * distance;
+                let candidate_y: i32 = y + self.directions_y[direction] * distance;
+                if (candidate_x >= Ball.radius && candidate_x <= hi
+                    && candidate_y >= Ball.radius && candidate_y <= hi
+                    && self.has_room(candidate_x, candidate_y)) {
+                    self.add_ball(candidate_x, candidate_y, direction);
+                    return;
+                }
+                offset++;
+            }
+            distance += 12;
+        }
+        // In a crowded patch, separation in subsequent steps clears the contact.
+        self.add_ball(spawn_x, spawn_y, heading);
+    }
+
+    fn add_ball(x: i32, y: i32, direction: i32) -> void {
+        let count: i32 = self.count();
+        let speed: i32 = 440 + count % 5 * 41;
+        let ball: Ball = new Ball(x, y, self.directions_x[direction] * speed / Ball.unit,
+                                 self.directions_y[direction] * speed / Ball.unit,
+                                 self.colors[count % 7], 25);
+        array_append(self.balls, ball);
+        self.population++;
+        self.pulse = 12;
+    }
+}

@@ -1,0 +1,178 @@
+module main;
+
+import arena[Arena];
+import ball[Ball];
+import lib/maths maths;
+import lib/std std;
+import lib/window window;
+
+class BouncyApp {
+    let arena: Arena;
+    let width: i32 = 450;
+    let height: i32 = 800;
+    let fd: i32;
+    let previous_input: i32;
+    let paused: bool = false;
+    let digits: []i32 = [63, 6, 91, 79, 102, 109, 125, 7, 127, 111];
+    let alphabet: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/+-. ";
+    let glyphs: []i32 = [23530, 15083, 25166, 15211, 29391, 4815, 27470,
+                         23533, 29847, 11044, 23277, 29257, 23549, 24573,
+                         11114, 4843, 28522, 23275, 14478, 9367, 31597,
+                         11117, 24557, 23213, 9389, 29351, 31599, 29850,
+                         29347, 14499, 18925, 14543, 31694, 9383, 31727,
+                         14831, 1040, 4772, 1488, 448, 8192, 0];
+
+    pub init() {
+        self.arena = new Arena();
+    }
+
+    pub fn run() -> i32 {
+        self.fd = window.wm_open("BOUNCY / Every collision creates a ball",
+                                 "Bouncy.app/Contents/MacOS/window_manager", "/tmp/novus_bouncy.sock");
+        if (self.fd < 0) {
+            std.print("Bouncy could not open its window.");
+            return 1;
+        }
+        window.wm_resize(self.fd, self.width, self.height);
+        window.wm_show(self.fd);
+
+        let frame: i32 = 0;
+        let input: i32 = 0;
+        while ((input & window.wm_input_quit()) == 0) {
+            self.handle_input(input);
+            if (!self.paused) {
+                self.arena.step();
+                self.arena.step();
+            }
+            if (frame % 20 == 0) { self.update_viewport(); }
+            self.draw();
+            input = window.wm_present(self.fd);
+            window.wm_sleep_ms(14);
+            frame++;
+        }
+
+        window.wm_quit(self.fd);
+        return 0;
+    }
+
+    fn handle_input(input: i32) -> void {
+        if ((input & window.wm_input_left()) != 0) { self.arena.resize(-3); }
+        if ((input & window.wm_input_right()) != 0) { self.arena.resize(3); }
+        let jump: i32 = window.wm_input_jump();
+        if ((input & jump) != 0 && (self.previous_input & jump) == 0) { self.arena.reset(); }
+        let down: i32 = window.wm_input_down();
+        if ((input & down) != 0 && (self.previous_input & down) == 0) { self.paused = !self.paused; }
+        self.previous_input = input;
+    }
+
+    fn update_viewport() -> void {
+        let size: str = window.wm_size(self.fd);
+        let split: i32 = std.str_find(size, "x");
+        if (split < 0) { return; }
+        self.width = std.str_to_i32(std.substr_len(size, 0, split));
+        self.height = std.str_to_i32(std.substr(size, split + 1));
+    }
+
+    fn rectangle(x: i32, y: i32, w: i32, h: i32, color: i32) -> void {
+        window.wm_rect(self.fd, x, y, w, h, color);
+    }
+
+    fn draw_ball(ball: Ball, left: i32, top: i32, side: i32) -> void {
+        let scale: i32 = self.arena.side * Ball.unit;
+        let x: i32 = left + ball.x * side / scale;
+        let y: i32 = top + ball.y * side / scale;
+        let color: i32 = ball.tint();
+        let radius: i32 = maths.max(1, 5 * side / self.arena.side);
+        let row: i32 = 0 - radius;
+        while (row <= radius) {
+            let half: i32 = maths.isqrt(radius * radius - row * row);
+            self.rectangle(x - half, y + row, half * 2 + 1, 1, color);
+            row++;
+        }
+        if (radius >= 3) {
+            self.rectangle(x - 2, y - 2, 2, 2, 0xFFFFFFFF);
+        }
+    }
+
+    fn text(label: str, x: i32, y: i32, size: i32, color: i32) -> void {
+        let i: i32 = 0;
+        while (i < len(label)) {
+            let glyph: i32 = std.str_find(self.alphabet, std.substr_len(label, i, 1));
+            if (glyph >= 0) {
+                let bit: i32 = 1;
+                let cell: i32 = 0;
+                while (cell < 15) {
+                    if ((self.glyphs[glyph] & bit) != 0) {
+                        self.rectangle(x + i * size * 4 + cell % 3 * size,
+                                       y + cell / 3 * size, size, size, color);
+                    }
+                    bit *= 2;
+                    cell++;
+                }
+            }
+            i++;
+        }
+    }
+
+    fn centered_text(label: str, y: i32, size: i32, color: i32) -> void {
+        self.text(label, (self.width - (len(label) * 4 - 1) * size) / 2, y, size, color);
+    }
+
+    fn draw_digit(digit: i32, x: i32, y: i32, color: i32) -> void {
+        let bars: i32 = self.digits[digit];
+        if ((bars & 1) != 0)  { self.rectangle(x + 3, y,      12, 3, color); }
+        if ((bars & 2) != 0)  { self.rectangle(x + 15, y + 3, 3, 10, color); }
+        if ((bars & 4) != 0)  { self.rectangle(x + 15, y + 16, 3, 10, color); }
+        if ((bars & 8) != 0)  { self.rectangle(x + 3, y + 26, 12, 3, color); }
+        if ((bars & 16) != 0) { self.rectangle(x, y + 16,     3, 10, color); }
+        if ((bars & 32) != 0) { self.rectangle(x, y + 3,      3, 10, color); }
+        if ((bars & 64) != 0) { self.rectangle(x + 3, y + 13, 12, 3, color); }
+    }
+
+    fn draw_count(y: i32, color: i32) -> void {
+        let count: i32 = self.arena.count();
+        let places: i32 = 1;
+        if (count >= 10) { places = 2; }
+        if (count >= 100) { places = 3; }
+        let x: i32 = (self.width - (places * 24 - 6)) / 2 + (places - 1) * 24;
+        while (places > 0) {
+            self.draw_digit(count % 10, x, y, color);
+            count = count / 10;
+            x -= 24;
+            places--;
+        }
+    }
+
+    fn draw() -> void {
+        let side: i32 = maths.min(self.arena.side, maths.max(12, maths.min(self.width - 20, self.height - 110)));
+        let x: i32 = (self.width - side) / 2;
+        let y: i32 = (self.height - side) / 2;
+        let border: i32 = 0xFF77C6E8;
+        if (self.arena.pulse > 0) { border = 0xFFA6FFFF; }
+
+        window.wm_clear(self.fd, 0xFF080A13);
+        if (y > 170) {
+            self.centered_text("BOUNCY", 46, 4, 0xFFE9F3FF);
+            self.centered_text("EVERY COLLISION +1", 82, 2, 0xFF7792AE);
+        }
+        self.centered_text("BALLS", y - 76, 2, 0xFF7792AE);
+        self.rectangle(x - 5, y - 5, side + 10, side + 10, 0xFF17283C);
+        self.rectangle(x - 2, y - 2, side + 4, side + 4, border);
+        self.rectangle(x, y, side, side, 0xFF0D1223);
+        self.draw_count(y - 56, border);
+
+        let i: i32 = 0;
+        while (i < self.arena.count()) {
+            self.draw_ball(self.arena.at(i), x, y, side);
+            i++;
+        }
+        self.centered_text("LEFT / RIGHT : SCALE", y + side + 30, 2, 0xFF7792AE);
+        self.centered_text("SPACE : RESTART   DOWN : PAUSE", y + side + 52, 2, 0xFF7792AE);
+        if (self.paused) { self.centered_text("PAUSED", y + side / 2 - 10, 3, 0xFFFFFFFF); }
+    }
+}
+
+fn main() -> i32 {
+    let app: BouncyApp = new BouncyApp();
+    return app.run();
+}

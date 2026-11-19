@@ -1,0 +1,44 @@
+module verify;
+
+import arena[Arena];
+import ball[Ball];
+import lib/std std;
+
+fn main() -> i32 {
+    let arena: Arena = new Arena();
+    if (arena.count() != 2) { return 1; }
+    arena.step();
+    if (arena.count() != 2) { return 2; }
+
+    let ticks: i32 = 1;
+    while (arena.count() == 2 && ticks < 100) {
+        arena.step();
+        ticks++;
+    }
+    if (arena.count() != 3) { return 3; }
+    std.print("First collision produced exactly one ball at step " + std.int_to_str(ticks));
+    arena.step();
+    if (arena.count() != 3) { return 4; }
+
+    arena.resize(-1000);
+    if (arena.side != 222) { return 5; }
+    arena.resize(1000);
+    if (arena.side != 426) { return 6; }
+
+    while (arena.count() < Arena.capacity && ticks < 15000) {
+        arena.step();
+        ticks++;
+    }
+    if (arena.count() != Arena.capacity) { return 7; }
+    std.print("Reached " + std.int_to_str(arena.count()) + " balls at step " + std.int_to_str(ticks));
+    let i: i32 = 0;
+    while (i < arena.count()) {
+        let ball: Ball = arena.at(i);
+        let hi: i32 = arena.side * Ball.unit - Ball.radius;
+        if (ball.x < Ball.radius || ball.y < Ball.radius || ball.x > hi || ball.y > hi) { return 8; }
+        i++;
+    }
+    arena.reset();
+    if (arena.count() != 2 || arena.side != 426) { return 9; }
+    return 0;
+}

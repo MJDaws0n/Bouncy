@@ -1,0 +1,95 @@
+module ball;
+
+import lib/maths maths;
+
+// Physics uses 256 units per pixel so slow motion and rebounds keep precision.
+class Ball {
+    pub static let unit: i32 = 256;
+    pub static let radius: i32 = 1280;
+    pub let x: i32;
+    pub let y: i32;
+    let vx: i32;
+    let vy: i32;
+    let color: i32;
+    let flash: i32;
+
+    pub init(x: i32, y: i32, vx: i32, vy: i32, color: i32, flash: i32) {
+        self.x = x;
+        self.y = y;
+        self.vx = vx;
+        self.vy = vy;
+        self.color = color;
+        self.flash = flash;
+    }
+
+    pub fn advance(lo: i32, hi: i32) -> void {
+        self.x += self.vx;
+        self.y += self.vy;
+        self.bounce_off_walls(lo, hi);
+        if (self.flash > 0) { self.flash--; }
+    }
+
+    pub fn bounce_off_walls(lo: i32, hi: i32) -> void {
+        if (self.x <= lo) {
+            self.x = lo;
+            self.vx = maths.abs(self.vx);
+        } else if (self.x >= hi) {
+            self.x = hi;
+            self.vx = 0 - maths.abs(self.vx);
+        }
+
+        if (self.y <= lo) {
+            self.y = lo;
+            self.vy = maths.abs(self.vy);
+        } else if (self.y >= hi) {
+            self.y = hi;
+            self.vy = 0 - maths.abs(self.vy);
+        }
+    }
+
+    pub fn overlaps(x: i32, y: i32, distance: i32) -> bool {
+        let dx: i32 = x - self.x;
+        let dy: i32 = y - self.y;
+        return maths.abs(dx) < distance && maths.abs(dy) < distance
+            && dx * dx + dy * dy < distance * distance;
+    }
+
+    pub fn collide(other: Ball) -> bool {
+        let diameter: i32 = Ball.radius * 2;
+        if (!self.overlaps(other.x, other.y, diameter)) { return false; }
+
+        let dx: i32 = other.x - self.x;
+        let dy: i32 = other.y - self.y;
+        let distance: i32 = maths.isqrt(dx * dx + dy * dy);
+        let nx: i32 = Ball.unit;
+        let ny: i32 = 0;
+        if (distance > 0) {
+            nx = dx * Ball.unit / distance;
+            ny = dy * Ball.unit / distance;
+        }
+
+        // Separate the discs, then exchange the normal component of velocity.
+        let separation: i32 = (diameter - distance) / 2 + 8;
+        let sx: i32 = nx * separation / Ball.unit;
+        let sy: i32 = ny * separation / Ball.unit;
+        self.x -= sx;
+        self.y -= sy;
+        other.x += sx;
+        other.y += sy;
+
+        let approach: i32 = ((self.vx - other.vx) * nx + (self.vy - other.vy) * ny) / Ball.unit;
+        if (approach <= 0) { return false; }
+        let ix: i32 = approach * nx / Ball.unit;
+        let iy: i32 = approach * ny / Ball.unit;
+        self.vx = maths.clamp(self.vx - ix, -850, 850);
+        self.vy = maths.clamp(self.vy - iy, -850, 850);
+        other.vx = maths.clamp(other.vx + ix, -850, 850);
+        other.vy = maths.clamp(other.vy + iy, -850, 850);
+        return true;
+    }
+
+    pub fn tint() -> i32 {
+        if (self.flash >= 18) { return 0xFFFFFFFF; }
+        return self.color;
+    }
+}
